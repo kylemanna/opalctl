@@ -1,0 +1,4 @@
+
+all: opalctl
+
+.PHONY: all
