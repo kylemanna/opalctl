@@ -10,7 +10,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-#include "linux/sed-opal.h"
+#include <linux/sed-opal.h>
 
 /*
  * Get this out of GDB from the sedutil-cli gdb function
