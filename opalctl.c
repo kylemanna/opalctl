@@ -9,6 +9,7 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <stdint.h>
 
 #include <linux/sed-opal.h>
 
@@ -29,8 +30,12 @@ char hash[OPAL_KEY_MAX] = {
     0x00, 0x00, 0x00, 0x00
 };
 
-int main(char* argv[], int argc)
+int main(int argc, char* argv[])
 {
+    // Unused variables
+    (void) argc;
+    (void) argv;
+
     int ret = 0;
 
     char *dev = "/dev/nvme0n1";
@@ -66,27 +71,40 @@ int main(char* argv[], int argc)
 
     */
 
-    struct opal_lock_unlock lk_unlk = {
-        .session = {
-            .sum = 0, /* Not Single User Mode */
-            .who = OPAL_ADMIN1, /* Act as admin */
-            .opal_key = {
-                .lr = 0, /* Locking Range = 0 -> global */
-            },
-        },
-        .l_state = OPAL_RW, /* Allow read-write, but not sure */
-    };
+    // Create necessary structure and zerofill it, just in case
+    struct opal_lock_unlock lk_unlk;
+    memset(&lk_unlk, 0, sizeof(struct opal_lock_unlock));
+    
+    // Unlock OPAL drive for read and write
+    lk_unlk.l_state = OPAL_RW;
+    // Don't use single user mode
+    lk_unlk.session.sum = 0;
+    // Identify as admin1
+    lk_unlk.session.who = OPAL_ADMIN1;
+    // 0 locking range
+    lk_unlk.session.opal_key.lr = 0;
+    // Copy key
+    memcpy(lk_unlk.session.opal_key.key, hash, sizeof(hash));
+    // Set key size
+    lk_unlk.session.opal_key.key_len = sizeof(hash);
+    
+    // Check if everything is OK now
+    if (errno) {
+        perror("Error before ioctl");
+        goto cleanup;
+    }
+    
+    // Test the lk_unlk structure, this will give an error when the password is incorrect
+    ret = ioctl(fd, IOC_OPAL_LOCK_UNLOCK, &lk_unlk);
+    if (ret != 0) {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "Failed to ioctl(%s, IOC_OPAL_LOCK_UNLOCK, ...)", dev);
+        perror(buf);
+        goto cleanup;
+    }
 
-    //const char *prompt = "TCG Opal Password: ";
-    //char* pass = getpass(prompt);
-
-    //size_t len = strlen(pass);
-    //memcpy(&lk_unlk.session.opal_key.key, pass, len);
-    memcpy(&lk_unlk.session.opal_key.key, hash, OPAL_KEY_MAX);
-
-    printf("sizeof(lk_unlk) = %u\n", sizeof(lk_unlk));
+    // Do the actual job
     ret = ioctl(fd, IOC_OPAL_SAVE, &lk_unlk);
-
     if (ret != 0) {
         char buf[64];
         snprintf(buf, sizeof(buf), "Failed to ioctl(%s, IOC_OPAL_SAVE, ...)", dev);
